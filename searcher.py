@@ -66,16 +66,8 @@ class TextSearcher:
         self.max_end_idx = None
 
         if num_context_words > 0:
-            # attempt to get match on the full pattern
-            pattern = '(\S+\s+){{{1}}}(({0}.)|({0}))(\s+\S+){{{1}}}'.format(query_word, num_context_words)
-            self.append_match(self.match(pattern))
-
-            # account for when the query_word occurs at the start of the file
-            pattern = '(\S+\s+){{1,{1}}}?(({0}.)|({0}))(\s+\S+){{{1}}}'.format(query_word, num_context_words)
-            self.append_match(self.match(pattern))
-
-            # account for when the query_word occurs at the end of the file
-            pattern = '(\S+\s+){{{1}}}(({0}.)|({0}))(\s+\S+){{1,{1}}}?'.format(query_word, num_context_words)
+            # attempt to get matches using the pattern
+            pattern = '(\S+\s+){{0,{1}}}((?:\S+)?{0}(?:.)?(?:,)?(?:)?(?:\'\w)?)((?:\s+)?\S+){{0,{1}}}'.format(query_word, num_context_words)
             self.append_match(self.match(pattern))
         else:
             for m in self.match(query_word):
