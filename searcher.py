@@ -43,7 +43,6 @@ class TextSearcher:
         :type file_contents: str
         '''
         self.file_contents = file_contents
-        self.words = file_contents.split()
 
     def search(self, query_word, num_context_words):
         '''
@@ -61,23 +60,31 @@ class TextSearcher:
         if len(query_word) > len(self.file_contents):
             return []
 
-        self.matches = []
-        self.min_start_idx = None
-        self.max_end_idx = None
+        matches = []
 
         if num_context_words > 0:
-            # attempt to get matches using the pattern
-            pattern = '(\S+\s+){{0,{1}}}((?:\S+)?{0}(?:.)?(?:,)?(?:)?(?:\'\w)?)((?:\s+)?\S+){{0,{1}}}'.format(query_word, num_context_words)
-            self.append_match(self.match(pattern))
+
+            # Split the matching into the preceding pattern before the query word and the following pattern after
+            # the query word
+
+            preceding_pattern = '(\S+\s+){{0,{1}}}((?:\S+)?{0}(?:\S+)?)'.format(query_word, num_context_words)
+            preceding_match_indices = self.get_indexes(self.match(preceding_pattern))
+            following_pattern = '((?:\S+)?{0}(?:.)?(?:,)?(?:)?(?:\'\w)?)((?:\s+)?\S+){{0,{1}}}'.format(query_word,
+                                                                                                       num_context_words)
+            following_match_indices = self.get_indexes(self.match(following_pattern))
+
+            # get the merged overlapping matches
+            matches = self.get_merged_matches(preceding_match_indices, following_match_indices, query_word)
         else:
             for m in self.match(query_word):
                 log_info(m.group(), m.start())
-                self.matches.append(m.group())
+                matches.append(m.group())
 
-        return self.matches
+        return matches
 
     def match(self, pattern):
         """
+        Perform regex matching
         :param pattern: the pattern to match
         :type pattern: str
         :return: a list of matches
@@ -85,35 +92,42 @@ class TextSearcher:
         """
         return re.finditer(pattern, self.file_contents, re.IGNORECASE)
 
-    def append_match(self, matches):
+    def get_indexes(self, matches):
         """
-        Check if the match should be appended to the result list
-        :param matches: Match object returned by re.finditer
+        Return a list of that contains the starting and ending indices for the matched pattern
+        :param matches: iterable match object
+        :return: list containing (starting index, ending index) of the matched pattern
         """
-        append = False
+        indices = []
         for m in matches:
-            text = m.group()
-            log_info(m.group(), m.start())
-            """ 
-            Check if the starting index has been recorded; this check is needed
-            to verify if the matched pattern occurs at the start of the file.
-            """
-            if not self.min_start_idx or m.start() < self.min_start_idx:
-                self.min_start_idx = m.start()
-                append = True
-            """ 
-            Check if the ending index has been recorded; this check is needed
-            to verify whether the matched pattern occurs at the end of the file.
-            """
-            if not self.max_end_idx or m.end() > self.max_end_idx:
-                self.max_end_idx = m.end()
-                append = True
-            """
-            Assumption: seems that if the matched text contains the last word in the file,
-            then don't strip the trailing punctuation
-            """
-            if m.end() != len(self.file_contents):
-                text = strip_punctuation_ending(text)
+            index = (m.start(), m.end())
+            if index not in indices:
+                indices.append(index)
+        return indices
 
-            if append is True:
-                self.matches.append(text)
+    def get_merged_matches(self, preceding_match_indices, following_match_indices, query_word):
+        """
+        Take the indices from the preceding and following matched patterns and form a
+        full matching pattern by slicing the text from the start of the preceding pattern and
+        the end of the following pattern
+        :param preceding_match_indices:
+        :param following_match_indices:
+        :param query_word:
+        :return:
+        """
+        matches = []
+
+        # Determine if the preceding pattern and the following pattern overlap, merge if they do
+        # and record the full  pattern in the matches list
+        for (preceding_match_start, preceding_match_end) in preceding_match_indices:
+            for (following_match_start, following_match_end) in following_match_indices:
+                if preceding_match_start < following_match_start - len(query_word) < preceding_match_end:
+                    text = self.file_contents[slice(preceding_match_start, following_match_end)]
+                    # Making the assumption that if the last word has a trailing punctuation,
+                    # then remove. Exception is if the last word is the end of the file, then don't
+                    # remove.
+                    if following_match_end != len(self.file_contents):
+                        text = strip_punctuation_ending(text)
+                    matches.append(text)
+
+        return matches
